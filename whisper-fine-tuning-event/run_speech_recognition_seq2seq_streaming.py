@@ -51,6 +51,8 @@ from transformers.utils import check_min_version, send_example_telemetry
 from transformers.utils.versions import require_version
 from transformers.models.whisper.english_normalizer import BasicTextNormalizer
 
+from normalize_text_hf_sprint import FrenchTextNormalizer
+
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.25.0.dev0")
 
@@ -118,6 +120,12 @@ class ModelArguments:
         default=None, metadata={"help": "A list of tokens that will be suppressed at generation."}
     )
     model_index_name: str = field(default=None, metadata={"help": "Pretty name for the model card."})
+    use_cache: bool = field(default=True, metadata={})
+    encoder_layerdrop: float = field(default=0.0, metadata={})
+    decoder_layerdrop: float = field(default=0.0, metadata={})
+    dropout: float = field(default=0.0, metadata={})
+    attention_dropout: float = field(default=0.0, metadata={})
+    activation_dropout: float = field(default=0.0, metadata={})
 
 
 @dataclass
@@ -390,7 +398,18 @@ def main():
         use_auth_token=True if model_args.use_auth_token else None,
     )
 
-    config.update({"forced_decoder_ids": model_args.forced_decoder_ids, "suppress_tokens": model_args.suppress_tokens})
+    config.update(
+        {
+            "forced_decoder_ids": model_args.forced_decoder_ids,
+            "suppress_tokens": model_args.suppress_tokens,
+            "use_cache": model_args.use_cache,
+            "encoder_layerdrop": model_args.encoder_layerdrop,
+            "decoder_layerdrop": model_args.decoder_layerdrop,
+            "dropout": model_args.dropout,
+            "attention_dropout": model_args.attention_dropout,
+            "activation_dropout": model_args.activation_dropout,
+        }
+    )
 
     feature_extractor = AutoFeatureExtractor.from_pretrained(
         model_args.feature_extractor_name if model_args.feature_extractor_name else model_args.model_name_or_path,
@@ -443,7 +462,8 @@ def main():
     model_input_name = feature_extractor.model_input_names[0]
     do_lower_case = data_args.do_lower_case
     do_remove_punctuation = data_args.do_remove_punctuation
-    normalizer = BasicTextNormalizer()  # 'official' text normalizer from OpenAI
+    # normalizer = BasicTextNormalizer()  # 'official' text normalizer from OpenAI
+    normalizer = FrenchTextNormalizer()
 
     if data_args.max_train_samples is not None:
         raw_datasets["train"] = raw_datasets["train"].take(data_args.max_train_samples)
@@ -460,9 +480,10 @@ def main():
         batch["input_length"] = len(sample["array"])
 
         # process targets
-        input_str = batch[text_column_name].lower() if do_lower_case else batch[text_column_name]
-        if do_remove_punctuation:
-            input_str = normalizer(input_str).strip()
+        # input_str = batch[text_column_name].lower() if do_lower_case else batch[text_column_name]
+        # if do_remove_punctuation:
+        #     input_str = normalizer(input_str).strip()
+        input_str = normalizer(batch[text_column_name])
         batch["labels"] = tokenizer(input_str).input_ids
         return batch
 
@@ -501,11 +522,12 @@ def main():
         # we do not want to group tokens when computing the metrics
         label_str = tokenizer.batch_decode(pred.label_ids, skip_special_tokens=True)
 
-        if do_normalize_eval:
-            pred_str = [normalizer(pred) for pred in pred_str]
-            label_str = [normalizer(label) for label in label_str]
+        # if do_normalize_eval:
+        #     pred_str = [normalizer(pred) for pred in pred_str]
+        #     label_str = [normalizer(label) for label in label_str]
+        pred_str = [normalizer(pred) for pred in pred_str]
 
-        wer = 100 * metric.compute(predictions=pred_str, references=label_str)
+        wer = metric.compute(predictions=pred_str, references=label_str)
 
         return {"wer": wer}
 
