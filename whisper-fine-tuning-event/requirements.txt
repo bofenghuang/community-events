@@ -7,3 +7,5 @@ jiwer
 evaluate>=0.3.0
 more-itertools
 tensorboard
+wandb
+num2words
