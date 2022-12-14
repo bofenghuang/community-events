@@ -180,6 +180,28 @@ The Whisper model should be fine-tuned using **PyTorch**, **🤗 Transformers**,
 section, we'll cover how to set up an environment with the required libraries. This section assumes that you are SSH'd 
 into your GPU device. This section does not apply if you are fine-tuning the Whisper model in a Google Colab.
 
+If you are returning to this section having read through it previously and want to quickly set up an environment, you 
+can do so in one call by executing the following code cell. If this is your first time setting up an environment, we 
+recommend you read this section to understand the steps involved.
+
+```bash
+sudo add-apt-repository -y ppa:jonathonf/ffmpeg-4
+sudo apt update
+sudo apt install -y ffmpeg
+
+sudo apt-get install git-lfs
+
+python3 -m venv hf_env
+source hf_env/bin/activate
+echo "source ~/hf_env/bin/activate" >> ~/.bashrc
+
+git clone https://github.com/huggingface/community-events.git
+pip install -r community-events/whisper-fine-tuning-event/requirements.txt
+
+git config --global credential.helper store
+huggingface-cli login
+ ```
+
 ### Unix Libraries
 
 First, we need to make sure we have the required NVIDIA drivers installed. We can check that we have these drivers 
@@ -391,10 +413,11 @@ print(next(iter(common_voice["train"])))
 ```
 
 However, both these issues can be solved with 🤗 Datasets. Rather than downloading the whole dataset at once, we 
-download small chunks of the dataset at a time, in a process called _streaming_. Since the data is downloaded 
-progressively as we iterate over the dataset, we can get started with a dataset without waiting for the entire dataset 
-to download. Once we're done with a chunk, it's automatically deleted. This way, we only have the data when we need it, 
-and not when we don't!
+load individual samples as we cycle over the dataset, in a process called _streaming_. Since the data is loaded 
+progressively as we iterate over the dataset, we can get started with a dataset as soon as the first sample is ready. 
+This way, we don't have to wait for the entire dataset to download before we can run our code! We are also free of any 
+disk space contraints: once we're done with a sample, we discard it and load the next one to memory. This way, we only 
+have the data when we need it, and not when we don't!
 
 Streaming is enabled by passing the argument `streaming=True` to the `load_dataset` function. We can then use our 
 audio datasets in much the same way as before! For these reasons, **we highly recommend** that you try out the following 
@@ -414,8 +437,17 @@ speech recognition dataset on the Hub with just 20GB of disk space**. As a speec
 game changing! The largest speech recognition datasets are available to us regardless of our device disk space. We are 
 extremely excited to be showcasing streaming mode in this event and hope that you will enjoy using it.
 
+There is one caveat to streaming mode. When downloading a dataset to disk, the processed data is saved to our cache. If 
+we want to re-use this data, we can directly load the processed data from cache, skipping the download and processing 
+steps. Consequently, we only have to perform the downloading and processing operations once. With streaming mode, the 
+data is not downloaded to disk. Thus, neither the download nor pre-processing are cached. If we want to re-use the data, 
+the streaming steps must be repeated, with the audio files loaded and pre-processed again. Therefore, we recommend not 
+using streaming mode if your dataset is small (< 10 hours). In this case, it is faster to download and pre-process the 
+dataset in the conventional way once at the start, and then re-use it at each epoch. We provide pointers for disabling 
+streaming mode in the section [Fine-Tune Whisper](#fine-tune-whisper).
+
 If you want to read more about streaming mode, we 
-recommend you check out the aforementioned blog post: [A Complete Guide To Audio Datasets](https://huggingface.co/blog/audio-datasets). 
+recommend you check out the aforementioned blog post: [A Complete Guide To Audio Datasets](https://huggingface.co/blog/audio-datasets).
 
 ### Pre-Processing
 
@@ -711,6 +743,7 @@ echo 'python run_speech_recognition_seq2seq_streaming.py \
 	--do_eval \
 	--predict_with_generate \
 	--do_normalize_eval \
+	--streaming \
 	--use_auth_token \
 	--push_to_hub' >> run.sh
 ```
@@ -718,7 +751,8 @@ echo 'python run_speech_recognition_seq2seq_streaming.py \
 Make sure to change the `--dataset_config_name` and `--language` to the correct values for your language! See also how 
 we combine the train and validation splits as `--train_split_name="train+validation"`. This is recommended for low-resource 
 languages (it probably isn't strictly necessary for Spanish, where the `"train"` split for Common Voice 11 contains 
-ample training data). We also assign a `"model_index_name"` - a pretty name that will go on the model card.
+ample training data). We also assign a `"model_index_name"` - a pretty name that will go on the model card. If you are 
+training on a very small dataset (< 10 hours), it is advisable to disable streaming mode: `--streaming="False"`.
 
 We provide the train/eval batch sizes for the "small" checkpoint fine-tuned on a 1x A100 device. Depending on your device and checkpoint, 
 you might need to lower these values. Refer to the subsection [Recommended Training Configurations](#recommended-training-configurations) 
@@ -820,14 +854,21 @@ cd whisper-small-es
 We encourage participants to add all the training notebook directly to the model repository. This way, 
 training runs are fully reproducible.
 
-We are providing a iPython notebook for fine-tuning Whisper with 🤗 Datasets' streaming mode: [`fine_tune_whisper_streaming.ipynb`](https://github.com/huggingface/community-events/blob/main/whisper-fine-tuning-event/fine_tune_whisper_streaming.ipynb)
+We provide an iPython notebook for fine-tuning Whisper with 🤗 Datasets' streaming mode: [`fine-tune-whisper-streaming.ipynb`](https://github.com/huggingface/community-events/blob/main/whisper-fine-tuning-event/fine-tune-whisper-streaming.ipynb)
 This notebook can be copied to your model repository with the following command:
 
 ```bash
 cp ~/community-events/whisper-fine-tuning-event/fine-tune-whisper-streaming.ipynb .
 ```
 
-This will download a copy of the iPython notebook to your model repository.
+If you are fine-tuning Whisper on a very small dataset (< 10 hours), it is advised that you use the non-streaming notebook 
+[`fine-tune-whisper-non-streaming.ipynb`](https://github.com/huggingface/community-events/blob/main/whisper-fine-tuning-event/fine-tune-whisper-non-streaming.ipynb) 
+(see section [Streaming Mode](#streaming-mode)). This notebook can be copied to your model repository with the following 
+command:
+
+```bash
+cp ~/community-events/whisper-fine-tuning-event/fine-tune-whisper-non-streaming.ipynb .
+```
 
 4. **Launch Jupyter**
 
@@ -957,7 +998,23 @@ We recommend running evaluation during training by setting your eval dataset to 
 We'll also provide you with a standalone evaluation script so that you can test your model after training on Common Voice 
 or other datasets of your choice.
 
-<!--- TODO: VB - Add the streaming evaluation script here once tested. --->
+In addition to running evaluation while training, you can noe use your Whisper checkpoints to run evaluation on *any* speech recognition dataset on the hub. The [run_eval_whisper_streaming.py](https://github.com/huggingface/community-events/blob/main/whisper-fine-tuning-event/run_eval_whisper_streaming.py) script loads your whisper checkpoints, runs batch inference on your specified dataset and returns the WER.
+
+You can use the script as follows:
+```bash
+python run_eval_whisper_streaming.py --model_id="openai/whisper-tiny" --dataset="google/fleurs" --config="ar_eg" --device=0 --language="ar"
+```
+
+The evaluation script can be customised with the following parameters:
+1. `model_id` - Whisper model identifier e.g. `openai/whisper-tiny`
+2. `dataset` - Dataset name to evaluate the `model_id` on. Default value: `mozilla-foundation/common_voice_11_0`
+3. `config` - Config of the dataset. e.g. `'en'` for the English split of Common Voice
+4. `split` - Split of the dataset. Default value: `test`
+5. `batch_size` - Number of samples to go through each streamed batch for inference. Default value: `16`
+6. `max_eval_samples` - Max number of samples to be evaluated from the dataset. Put a lower number e.g. `64` for testing this script. **Only use this for testing the script**
+7. `streaming` - Whether you'd like to download the entire dataset or stream it during the evaluation. Default value: `True`
+8. `language` - Language you want the `model_id` to transcribe the audio in.
+9. `device` - The device to run the pipeline on. e.g. `0` for running on GPU 0. Default value: -1 for CPU.
 
 ## Building a Demo
 
@@ -1055,6 +1112,13 @@ param, but [Adafactor](https://arxiv.org/abs/1804.04235) uses only one. To enabl
 
 A word of caution: Adafactor is untested for fine-tuning Whisper, so we are unsure sure how 
 Adafactor performance compares to Adam! For this reason, we recommend Adafactor as an **experimental feature** only.
+
+## Scripts & Colabs
+
+1. [Whirlwind tour of Whispering with 🤗Transformers](https://colab.research.google.com/drive/1l290cRv4RdvuLNlSeo9WexByHaNWs3s3?usp=sharing)
+2. [8bit inference for Whisper large model (6.5 gig VRAM) 🤯](https://colab.research.google.com/drive/1EMOwwfm1V1fHxH7eT1LLg7yBjhTooB6j?usp=sharing)
+
+<!--- TODO: VB - Move these colabs to a GitHub repo --->
 
 ## Feedback
 
