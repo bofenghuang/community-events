@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Copyright 2022 Bofeng Huang
 
+# export TRANSFORMERS_CACHE=/rd_storage/<user>/.cache/huggingface/transformers/
+# export HF_DATASETS_CACHE="/projects/bhuang/.cache/huggingface/datasets"
+
 export WANDB_PROJECT=hf-whisper-sprint-v2
 
 # https://github.com/pytorch/audio/issues/1021#issuecomment-726915239
@@ -9,7 +12,8 @@ export OMP_NUM_THREADS=1
 export CUDA_VISIBLE_DEVICES=0
 
 # python -m torch.distributed.launch \
-# 	--nproc_per_node 2 run_speech_recognition_seq2seq_streaming.py \
+# torchrun \
+	# --nproc_per_node 2 run_speech_recognition_seq2seq_streaming.py \
 python run_speech_recognition_seq2seq_streaming.py \
     --dataset_name="mozilla-foundation/common_voice_11_0" \
 	--dataset_config_name="fr" \
@@ -21,7 +25,7 @@ python run_speech_recognition_seq2seq_streaming.py \
 	--language="french" \
 	--task="transcribe" \
     --model_name_or_path="openai/whisper-medium" \
-	--output_dir="./outputs/hf_event_fr/whisper-medium-ft-lr6e6-bs256-steps4k-adamw_bnb_8bit" \
+	--output_dir="./outputs/hf_event_fr/whisper-medium-ft-lr6e6-bs256-steps4k-adamw_bnb_8bit-dropout005" \
     --overwrite_output_dir \
     --max_steps="4000" \
     --per_device_train_batch_size="32" \
@@ -42,6 +46,7 @@ python run_speech_recognition_seq2seq_streaming.py \
 	--load_best_model_at_end \
     --freeze_feature_encoder="False" \
 	--use_cache="False" \
+    --dropout="0.05" \
     --fp16 \
     --gradient_checkpointing \
     --predict_with_generate \

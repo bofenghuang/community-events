@@ -1,14 +1,24 @@
 #!/usr/bin/env bash
 # Copyright 2022 Bofeng Huang
 
+# export TRANSFORMERS_CACHE=/rd_storage/<user>/.cache/huggingface/transformers/
+# export HF_DATASETS_CACHE="/projects/bhuang/.cache/huggingface/datasets"
+
 export WANDB_PROJECT=hf-whisper-sprint-v2
 
 # https://github.com/pytorch/audio/issues/1021#issuecomment-726915239
 export OMP_NUM_THREADS=1
 
+# export CUDA_VISIBLE_DEVICES=1,3
 export CUDA_VISIBLE_DEVICES=0
 
+# https://pytorch.org/docs/stable/elastic/run.html
+# export HOST_NODE_ADDR="localhost:29000"
+
+# python run_speech_recognition_seq2seq_streaming.py \
 # python -m torch.distributed.launch \
+# torchrun \
+#     --rdzv_endpoint=$HOST_NODE_ADDR \
 # 	--nproc_per_node 2 run_speech_recognition_seq2seq_streaming.py \
 python run_speech_recognition_seq2seq_streaming.py \
     --dataset_name="mozilla-foundation/common_voice_11_0" \
