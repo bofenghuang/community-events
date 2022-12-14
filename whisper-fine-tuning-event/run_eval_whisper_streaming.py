@@ -5,6 +5,9 @@ from transformers.models.whisper.english_normalizer import BasicTextNormalizer
 from datasets import load_dataset, Audio
 import evaluate
 
+from normalize_text_hf_sprint import FrenchTextNormalizer
+
+
 wer_metric = evaluate.load("wer")
 
 
@@ -33,11 +36,12 @@ def get_text(sample):
         )
 
 
-whisper_norm = BasicTextNormalizer()
+# normalizer = BasicTextNormalizer()
+normalizer = FrenchTextNormalizer()
 
 
 def normalise(batch):
-    batch["norm_text"] = whisper_norm(get_text(batch))
+    batch["norm_text"] = normalizer(get_text(batch))
     return batch
 
 
@@ -48,12 +52,12 @@ def data(dataset):
 
 def main(args):
     batch_size = args.batch_size
-    whisper_asr = pipeline(
+    pipe = pipeline(
         "automatic-speech-recognition", model=args.model_id, device=args.device
     )
 
-    whisper_asr.model.config.forced_decoder_ids = (
-        whisper_asr.tokenizer.get_decoder_prompt_ids(
+    pipe.model.config.forced_decoder_ids = (
+        pipe.tokenizer.get_decoder_prompt_ids(
             language=args.language, task="transcribe"
         )
     )
@@ -77,12 +81,12 @@ def main(args):
     references = []
 
     # run streamed inference
-    for out in whisper_asr(data(dataset), batch_size=batch_size):
-        predictions.append(whisper_norm(out["text"]))
+    for out in pipe(data(dataset), batch_size=batch_size):
+        predictions.append(normalizer(out["text"]))
         references.append(out["reference"][0])
 
     wer = wer_metric.compute(references=references, predictions=predictions)
-    wer = round(100 * wer, 2)
+    # wer = round(100 * wer, 2)
 
     print("WER:", wer)
 

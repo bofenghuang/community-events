@@ -497,10 +497,10 @@ def main():
         batch["input_length"] = len(sample["array"])
 
         # process targets
-        # input_str = batch[text_column_name].lower() if do_lower_case else batch[text_column_name]
-        # if do_remove_punctuation:
-        #     input_str = normalizer(input_str).strip()
-        input_str = normalizer(batch[text_column_name])
+        input_str = batch[text_column_name].lower() if do_lower_case else batch[text_column_name]
+        if do_remove_punctuation:
+            input_str = normalizer(input_str).strip()
+        # input_str = normalizer(batch[text_column_name])
         batch["labels"] = tokenizer(input_str).input_ids
         return batch
 
