@@ -1,14 +1,18 @@
 import argparse
+import os
 
+import evaluate
+from datasets import Audio, load_dataset
 from transformers import pipeline
 from transformers.models.whisper.english_normalizer import BasicTextNormalizer
-from datasets import load_dataset, Audio
-import evaluate
 
-from normalize_text_hf_sprint import FrenchTextNormalizer
-
+# from normalize_text_hf_sprint import FrenchTextNormalizer
 
 wer_metric = evaluate.load("wer")
+cer_metric = evaluate.load("cer")
+
+normalizer = BasicTextNormalizer()
+# normalizer = FrenchTextNormalizer()
 
 
 def is_target_text_in_range(ref):
@@ -36,10 +40,6 @@ def get_text(sample):
         )
 
 
-# normalizer = BasicTextNormalizer()
-normalizer = FrenchTextNormalizer()
-
-
 def normalise(batch):
     batch["norm_text"] = normalizer(get_text(batch))
     return batch
@@ -47,11 +47,12 @@ def normalise(batch):
 
 def data(dataset):
     for i, item in enumerate(dataset):
-        yield {**item["audio"], "reference": item["norm_text"]}
+        yield {**item["audio"], "target": item["norm_text"]}
 
 
 def main(args):
     batch_size = args.batch_size
+    # todo: add fp16
     pipe = pipeline(
         "automatic-speech-recognition", model=args.model_id, device=args.device
     )
@@ -61,6 +62,11 @@ def main(args):
             language=args.language, task="transcribe"
         )
     )
+
+    # ! decoding option
+    pipe.model.config.max_length = 225 + 1
+    # beam search
+    # pipe.model.config.beam = 5
 
     dataset = load_dataset(
         args.dataset,
@@ -73,6 +79,7 @@ def main(args):
     # Only uncomment for debugging
     dataset = dataset.take(args.max_eval_samples)
 
+    # todo: max audio length, text token length
     dataset = dataset.cast_column("audio", Audio(sampling_rate=16000))
     dataset = dataset.map(normalise)
     dataset = dataset.filter(is_target_text_in_range, input_columns=["norm_text"])
@@ -83,12 +90,29 @@ def main(args):
     # run streamed inference
     for out in pipe(data(dataset), batch_size=batch_size):
         predictions.append(normalizer(out["text"]))
-        references.append(out["reference"][0])
+        references.append(out["target"][0])
 
-    wer = wer_metric.compute(references=references, predictions=predictions)
-    # wer = round(100 * wer, 2)
+    wer_result = wer_metric.compute(references=references, predictions=predictions)
+    cer_result = cer_metric.compute(references=references, predictions=predictions)
 
-    print("WER:", wer)
+    # print & log results
+    result_str = f"WER: {wer_result}\n" f"CER: {cer_result}"
+    print(result_str)
+
+    if args.log_outputs is not None:
+        if not os.path.exists(args.outdir):
+            os.makedirs(args.outdir)
+
+        with open(f"{args.outdir}/eval_results.txt", "w") as f:
+            f.write(result_str)
+
+        pred_file = f"{args.outdir}/log_predictions.txt"
+        target_file = f"{args.outdir}/log_targets.txt"
+
+        with open(pred_file, "w") as p, open(target_file, "w") as t:            
+            for idx, (reference, prediction) in enumerate(zip(references, predictions)):
+                p.write(str(idx) + "\t" + prediction + "\n")
+                t.write(str(idx) + "\t" + reference + "\n")
 
 
 if __name__ == "__main__":
@@ -149,6 +173,11 @@ if __name__ == "__main__":
         required=True,
         help="Two letter language code for the transcription language, e.g. use 'en' for English.",
     )
+    parser.add_argument("--task", type=str, default="transcribe", help="Task token")
+    parser.add_argument("--outdir", type=str, required=True, help="Save path.")
+    parser.add_argument("--log_outputs", action="store_true", help="If defined, write outputs to log file for analysis.")
+    parser.add_argument("--fp16", action="store_true", help="Downcast model and data to fp16")
+
     args = parser.parse_args()
 
     main(args)

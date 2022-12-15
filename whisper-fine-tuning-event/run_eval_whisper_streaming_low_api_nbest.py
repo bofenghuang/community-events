@@ -43,64 +43,14 @@ def get_text(sample):
 
 
 def normalise(batch):
-    # batch["norm_text"] = normalizer(get_text(batch))
-    batch["target"] = normalizer(get_text(batch))
+    batch["norm_text"] = normalizer(get_text(batch))
     return batch
 
 
 def data(dataset):
     for i, item in enumerate(dataset):
-        yield {**item["audio"], "reference": item["norm_text"]}
+        yield {**item["audio"], "target": item["norm_text"]}
 
-def log_results(result: Dataset, args: Dict[str, str]):
-    """DO NOT CHANGE. This function computes and logs the result metrics."""
-
-    log_outputs = args.log_outputs
-    # dataset_id = "_".join(args.dataset.split("/") + [args.config, args.split])
-    # dataset_id = Path(args.test_csv_file).stem
-
-    # compute metrics
-    # wer_result = wer.compute(references=result["target"], predictions=result["prediction"])
-    # cer_result = cer.compute(references=result["target"], predictions=result["prediction"])
-    wer_result = wer_metric.compute(references=result["target"], predictions=result["prediction_0"])
-    cer_result = cer_metric.compute(references=result["target"], predictions=result["prediction_0"])
-
-    # print & log results
-    result_str = f"WER: {wer_result}\n" f"CER: {cer_result}"
-    print(result_str)
-
-    if not os.path.exists(args.outdir):
-        os.makedirs(args.outdir)
-
-    # with open(f"{args.outdir}/{dataset_id}_eval_results.txt", "w") as f:
-    with open(f"{args.outdir}/eval_results.txt", "w") as f:
-        f.write(result_str)
-
-    # log all results in text file. Possibly interesting for analysis
-    if log_outputs is not None:
-        # pred_file = f"{args.outdir}/log_{dataset_id}_predictions.txt"
-        # target_file = f"{args.outdir}/log_{dataset_id}_targets.txt"
-        pred_file = f"{args.outdir}/log_predictions.txt"
-        target_file = f"{args.outdir}/log_targets.txt"
-
-        with open(pred_file, "w") as p, open(target_file, "w") as t:
-
-            # mapping function to write output
-            # def write_to_file(batch, i):
-            #     p.write(f"{i}" + "\n")
-            #     p.write(batch["prediction"] + "\n")
-            #     t.write(f"{i}" + "\n")
-            #     t.write(batch["target"] + "\n")
-
-            # ! to adjust for your cases
-            def write_to_file(batch, i):
-                # p.write(batch[args.id_column_name] + "\t" + str(batch[args.start_column_name]) + "\t" + str(batch[args.end_column_name]) + "\t" + batch["prediction"] + "\n")
-                # t.write(batch[args.id_column_name] + "\t" + str(batch[args.start_column_name]) + "\t" + str(batch[args.end_column_name]) + "\t" + batch["target"] + "\n")
-                # p.write(batch[args.id_column_name] + "\t" + batch["prediction"] + "\n")
-                p.write(batch[args.id_column_name] + "\t" + "\t".join([batch[f"prediction_{nbest_i}"] for nbest_i in range(10)]) + "\n")
-                t.write(batch[args.id_column_name] + "\t" + batch["target"] + "\n")
-
-            result.map(write_to_file, with_indices=True)
 
 def main(args):
 
@@ -144,9 +94,20 @@ def main(args):
     dataset = dataset.map(normalise)
     dataset = dataset.filter(is_target_text_in_range, input_columns=["norm_text"])
 
+    # predictions = []
+    # references = []
+
+    # for out in pipe(data(dataset), batch_size=batch_size):
+    #     predictions.append(normalizer(out["text"]))
+    #     references.append(out["target"][0])
+
+    # wer = wer_metric.compute(references=references, predictions=predictions)
+    # # wer = round(100 * wer, 2)
+
+    # print("WER:", wer)
+
     gen_greedy = {"do_sample": False, "num_beams": 1}
     gen_greedy_sampling = {"do_sample": True, "num_beams": 1}
-    gen_greedy_sampling_nbest = {**gen_greedy_sampling, "return_dict_in_generate": True, "output_scores": True, "num_return_sequences": 10}
     # While nucleus sampling can generate text free of repetitions, the semantic coherence of the generated text is not well-maintained.
     gen_nucleus = {"do_sample": True, "num_beams": 1, "top_p": 0.95, "top_k": 0}
     # reducing the temperature brings nucleus sampling closer to greedy search, which can be seen as a trade-off between greedy search and nucleus sampling.
@@ -162,9 +123,19 @@ def main(args):
     # (ii) the similarity with respect to the previous context to avoid model degeneration.
     gen_contrastive_search = {"top_k": 6, "penalty_alpha": 0.6}
 
+
+    # !
+    # nbest = 10
+    nbest = 5
+
+    gen_greedy_sampling_nbest = {**gen_greedy_sampling, "return_dict_in_generate": True, "output_scores": True, "num_return_sequences": nbest}
+    gen_beam_nbest = {**gen_beam, "return_dict_in_generate": True, "output_scores": True, "num_return_sequences": nbest}
+
     gen_kwargs = {
         "max_new_tokens": 225,
         # "max_new_tokens": 40,
+        # **gen_greedy_sampling_nbest,
+        **gen_beam_nbest,
         # "repetition_penalty"
         # "length_penalty"
         # "no_repeat_ngram_size"
@@ -172,11 +143,21 @@ def main(args):
         # "num_return_sequences"
     }
 
-    def map_to_pred(batch):
+    results = []
+
+    # run streamed inference
+    for example_idx, example in enumerate(data(dataset)):
+        if not example["target"]:
+            raise ValueError(example)
+            # continue
+
+        example_output = {
+            args.id_column_name: example.get(args.id_column_name, f"{example_idx:09d}"),
+            "target": example["target"],
+        }
+    
         # bh: synchronised process and forward, this can be improved by dataloader
-        inputs = processor(
-            [example["array"] for example in batch["audio"]], sampling_rate=16_000, return_tensors="pt"
-        )
+        inputs = processor(example["array"], sampling_rate=16_000, return_tensors="pt")
         input_features = inputs.input_features
         input_features = input_features.to(args.device)
 
@@ -184,51 +165,57 @@ def main(args):
             input_features = input_features.half()
 
         # generated_ids = model.generate(inputs=input_features, **gen_kwargs)
-        outputs_ = model.generate(inputs=input_features, **gen_kwargs)
-        generated_ids = outputs_.sequences  # shape BS x NBEST
+        generated_out = model.generate(inputs=input_features, **gen_kwargs)
+        # print(generated_out)
+        generated_ids = generated_out.sequences  # shape BS x NBEST
+        # ! beam
+        generated_scores = generated_out.sequences_scores.cpu().tolist()
 
         transcriptions = processor.batch_decode(generated_ids, skip_special_tokens=True)
 
-        # batch["prediction"] = transcriptions
         # normalize prediction
         predictions = [normalizer(prediction) for prediction in transcriptions]
 
-        nbest = gen_greedy_sampling_nbest["num_return_sequences"]
-        for nbest_i in range(nbest):
-            batch[f"prediction_{nbest_i}"] = [predictions[i + nbest_i] for i in range(0, len(predictions), nbest)]
+        for i in range(nbest):
+            example_output[f"prediction_{i}"] = predictions[i]
+            example_output[f"score_{i}"] = generated_scores[i]
+
+        results.append(example_output)
 
         # batch["target"] = batch[args.text_column_name]
         # normalize target
         # batch["target"] = normalize_text(batch[args.text_column_name], invalid_chars_regex)
         # batch["target"] = [normalizer(target) for target in batch[args.text_column_name]]
 
-        return batch
+    # compute metrics
+    references = [result_["target"] for result_ in results]
+    predictions = [result_["prediction_0"] for result_ in results]
+    wer_result = wer_metric.compute(references=references, predictions=predictions)
+    cer_result = cer_metric.compute(references=references, predictions=predictions)
 
-    result = dataset.map(map_to_pred, batched=True, batch_size=args.batch_size)
+    # print & log results
+    result_str = f"WER: {wer_result}\n" f"CER: {cer_result}"
+    print(result_str)
 
-    # fake ID if not exists
-    if args.id_column_name not in result.features.keys():
-        result = result.map(lambda example, idx: {**example, args.id_column_name: f"{idx:09d}"}, with_indices=True)
+    if not os.path.exists(args.outdir):
+        os.makedirs(args.outdir)
 
-    # filtering out empty targets
-    # result = result.filter(lambda example: example["target"] != "")
+    with open(f"{args.outdir}/eval_results.txt", "w") as f:
+        f.write(result_str)
 
-    # compute and log_results
-    # do not change function below
-    log_results(result, args)
+    if args.log_outputs is not None:
+        pred_file = f"{args.outdir}/log_predictions.txt"
+        target_file = f"{args.outdir}/log_targets.txt"
 
-    # predictions = []
-    # references = []
+        # ! to adjust for your cases
+        with open(pred_file, "w") as p, open(target_file, "w") as t:            
+            for result in results:
+                # p.write(batch[args.id_column_name] + "\t" + str(batch[args.start_column_name]) + "\t" + str(batch[args.end_column_name]) + "\t" + batch["prediction"] + "\n")
+                # t.write(batch[args.id_column_name] + "\t" + str(batch[args.start_column_name]) + "\t" + str(batch[args.end_column_name]) + "\t" + batch["target"] + "\n")
+                # p.write(batch[args.id_column_name] + "\t" + batch["prediction"] + "\n")
+                p.write(result[args.id_column_name] + "\t" + "\t".join([result[f"prediction_{i}"] for i in range(nbest)]) + "\t" + "\t".join([str(result[f"score_{i}"]) for i in range(nbest)]) + "\n")
+                t.write(result[args.id_column_name] + "\t" + result["target"] + "\n")
 
-    # # run streamed inference
-    # for out in pipe(data(dataset), batch_size=batch_size):
-    #     predictions.append(normalizer(out["text"]))
-    #     references.append(out["reference"][0])
-
-    # wer = wer_metric.compute(references=references, predictions=predictions)
-    # # wer = round(100 * wer, 2)
-
-    # print("WER:", wer)
 
 
 if __name__ == "__main__":
@@ -291,6 +278,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("--task", type=str, default="transcribe", help="Task token")
     parser.add_argument("--outdir", type=str, required=True, help="Save path.")
+    parser.add_argument("--log_outputs", action="store_true", help="If defined, write outputs to log file for analysis.")
     parser.add_argument("--id_column_name", type=str, default="ID")
     parser.add_argument("--fp16", action="store_true", help="Downcast model and data to fp16")
 
