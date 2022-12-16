@@ -63,10 +63,16 @@ def main(args):
         )
     )
 
-    # ! decoding option
+    # NB: decoding option
     pipe.model.config.max_length = 225 + 1
+    # sampling
+    # pipe.model.config.do_sample = True
     # beam search
-    # pipe.model.config.beam = 5
+    pipe.model.config.num_beams = 5
+    # return
+    # pipe.model.config.return_dict_in_generate = True
+    # pipe.model.config.output_scores = True
+    # pipe.model.config.num_return_sequences = 5
 
     dataset = load_dataset(
         args.dataset,
