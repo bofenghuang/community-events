@@ -24,14 +24,14 @@ python run_speech_recognition_seq2seq_streaming_de.py \
 	--max_duration_in_seconds="30" \
 	--language="german" \
 	--task="transcribe" \
-    --model_name_or_path="openai/whisper-medium" \
-	--output_dir="./outputs/hf_event/whisper-medium-ft-lr6e6-bs256-steps2k-dropout005" \
+    --model_name_or_path="openai/whisper-small" \
+	--output_dir="./outputs/hf_event/whisper-small-ft-lr6e6-bs256-steps2k-dropout005" \
     --overwrite_output_dir \
     --max_steps="2000" \
-    --per_device_train_batch_size="32" \
+    --per_device_train_batch_size="64" \
     --per_device_eval_batch_size="32" \
-	--gradient_accumulation_steps="8" \
-    --learning_rate="6.25e-6" \
+	--gradient_accumulation_steps="4" \
+    --learning_rate="1.25e-5" \
     --warmup_steps="200" \
 	--weight_decay "0.01" \
     --logging_steps="25" \

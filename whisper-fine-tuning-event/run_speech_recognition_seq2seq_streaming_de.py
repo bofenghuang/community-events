@@ -52,7 +52,7 @@ from transformers.utils import check_min_version, send_example_telemetry
 from transformers.utils.versions import require_version
 
 
-# from normalize_text_hf_sprint_de import BasicTextNormalizer
+from normalize_text_hf_sprint_de import BasicTextNormalizer as GermanTextNormalizer
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.25.0.dev0")
@@ -471,8 +471,8 @@ def main():
     model_input_name = feature_extractor.model_input_names[0]
     do_lower_case = data_args.do_lower_case
     do_remove_punctuation = data_args.do_remove_punctuation
-    # normalizer = BasicTextNormalizer()  # 'official' text normalizer from OpenAI
-    normalizer = BasicTextNormalizer()
+    normalizer = BasicTextNormalizer()  # 'official' text normalizer from OpenAI
+    de_normalizer = GermanTextNormalizer()
 
     if data_args.max_train_samples is not None:
         raw_datasets["train"] = (
@@ -500,7 +500,7 @@ def main():
         input_str = batch[text_column_name].lower() if do_lower_case else batch[text_column_name]
         if do_remove_punctuation:
             input_str = normalizer(input_str).strip()
-        # input_str = normalizer(batch[text_column_name])
+        input_str = de_normalizer(input_str, do_lowercase=False, symbols_to_keep="'-.,?!")
         batch["labels"] = tokenizer(input_str).input_ids
         return batch
 
