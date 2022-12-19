@@ -68,6 +68,7 @@ python run_eval_whisper_streaming.py \
 	--config "de" \
 	--split "test" \
     --device "0" \
-    --batch_size 4 \
+    --fp16 \
+    --batch_size 8 \
     --log_outputs \
     --outdir ${outdir}_cv11_greedy

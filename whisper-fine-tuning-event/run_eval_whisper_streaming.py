@@ -2,6 +2,7 @@ import argparse
 import os
 
 import evaluate
+import torch
 from datasets import Audio, load_dataset
 from transformers import pipeline
 from transformers.models.whisper.english_normalizer import BasicTextNormalizer
@@ -52,9 +53,13 @@ def data(dataset):
 
 def main(args):
     batch_size = args.batch_size
-    # todo: add fp16
+
+    # todo: mange fp16 inside pipeline
+    model_args = {}
+    if args.fp16:
+        model_args["torch_dtype"] = torch.float16
     pipe = pipeline(
-        "automatic-speech-recognition", model=args.model_id, device=args.device
+        "automatic-speech-recognition", model=args.model_id, device=args.device, **model_args
     )
 
     pipe.model.config.forced_decoder_ids = (
@@ -68,7 +73,7 @@ def main(args):
     # sampling
     # pipe.model.config.do_sample = True
     # beam search
-    pipe.model.config.num_beams = 5
+    # pipe.model.config.num_beams = 5
     # return
     # pipe.model.config.return_dict_in_generate = True
     # pipe.model.config.output_scores = True
