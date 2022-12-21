@@ -501,6 +501,7 @@ def main():
         if do_remove_punctuation:
             input_str = normalizer(input_str).strip()
         # input_str = normalizer(batch[text_column_name])
+        input_str = normalizer(batch[text_column_name], do_lowercase=False, symbols_to_keep="'-.,?!", do_standardize_numbers=False)
         batch["labels"] = tokenizer(input_str).input_ids
         return batch
 

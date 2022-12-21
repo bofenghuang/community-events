@@ -14,7 +14,8 @@ export CUDA_VISIBLE_DEVICES=0
 # python -m torch.distributed.launch \
 # torchrun \
 	# --nproc_per_node 2 run_speech_recognition_seq2seq_streaming.py \
-python run_speech_recognition_seq2seq_streaming_de.py \
+deepspeed run_speech_recognition_seq2seq_streaming_de.py \
+    --deepspeed="ds_config.json" \
     --dataset_name="mozilla-foundation/common_voice_11_0" \
 	--dataset_config_name="de" \
     --train_split_name="train+validation" \
@@ -25,12 +26,12 @@ python run_speech_recognition_seq2seq_streaming_de.py \
 	--language="german" \
 	--task="transcribe" \
     --model_name_or_path="openai/whisper-medium" \
-	--output_dir="./outputs/hf_event/whisper-medium-ft-lr6e6-bs256-steps2k-dropout005-casepunc" \
+	--output_dir="./outputs/hf_event/whisper-medium-ft-lr6e6-bs256-steps2k-dropout005-casepunc-ds" \
     --overwrite_output_dir \
     --max_steps="2000" \
-    --per_device_train_batch_size="32" \
+    --per_device_train_batch_size="64" \
     --per_device_eval_batch_size="32" \
-	--gradient_accumulation_steps="8" \
+	--gradient_accumulation_steps="4" \
     --learning_rate="6.25e-6" \
     --warmup_steps="200" \
 	--weight_decay "0.01" \

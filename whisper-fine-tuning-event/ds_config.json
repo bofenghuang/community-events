@@ -19,10 +19,11 @@
     },
 
     "scheduler": {
-        "type": "WarmupLR",
+        "type": "WarmupDecayLR",
         "params": {
             "warmup_min_lr": "auto",
             "warmup_max_lr": "auto",
+            "total_num_steps": "auto",
             "warmup_num_steps": "auto"
         }
     },

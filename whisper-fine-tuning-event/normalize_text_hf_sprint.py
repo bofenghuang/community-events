@@ -58,6 +58,10 @@ def remove_symbols(s: str, keep=""):
     )
 
 
+def escape_string(s):
+    return r"".join([rf"\{s_}" for s_ in s])
+
+
 class FrenchNumberNormalizer:
     def __init__(self, lang: str = "fr", converter: str = "cardinal"):
         self.lang = lang
@@ -81,17 +85,11 @@ class FrenchTextNormalizer:
         self.ignore_patterns = r"\b(hmm|mm|mhm|mmm|uh|um|ah|bah|beh|ben|eh|euh|hein|hum|mmh|oh|pff)\b"
         # self.ignore_patterns = None
 
-        # latin chars
-        # bh: speechbrain version for 4 common voice langs
-        # self.latin_chars = "A-Za-z0-9À-ÖØ-öø-ÿЀ-ӿéæœâçèàûî"
-        # bh:simplified version
-        self.latin_chars = "a-zàâäéèêëîïôöùûüÿçñ"
-
         self.replacers = {
-            # special symbols
+            # standarize symbols
             r"’|´|′|ʼ|‘|ʻ|`": "'",  # replace special quote
             r"−|‐": "-",  # replace special dash
-            # normalize characters and words (for french)
+            # standarize characters (for french)
             r"æ": "ae",
             r"œ": "oe",
             # ordinal
@@ -125,8 +123,21 @@ class FrenchTextNormalizer:
         self.standardize_numbers = FrenchNumberNormalizer()
         # self.standardize_spellings = EnglishSpellingNormalizer()
 
-    def __call__(self, s: str):
-        s = s.lower()
+        # latin chars
+        # bh: speechbrain version for "en", "fr", "it", "rw"
+        self.allowed_chars = "’'A-Za-z0-9À-ÖØ-öø-ÿЀ-ӿéæœâçèàûî"
+        # bh: lowercased
+        # self.allowed_chars = "a-zàâäéèêëîïôöùûüÿçñ"
+        # bh: all
+        # check https://en.wikipedia.org/wiki/List_of_Unicode_characters
+        french_chars_lower = "a-zàâäéèêëîïôöùûüÿçñ"
+        french_chars_upper = "A-ZÀÂÄÇÈÉÊËÎÏÔÖÙÛÜŸ"
+        number_chars = "0-9"
+        self.allowed_chars = french_chars_lower + french_chars_upper + number_chars
+
+    def __call__(self, s: str, do_lowercase=True, symbols_to_keep="'", do_standardize_numbers=True):
+        if do_lowercase:
+            s = s.lower()
 
         s = re.sub(r"[<\[][^>\]]*[>\]]", "", s)  # remove words between brackets
         s = re.sub(r"\(([^)]+?)\)", "", s)  # remove words between parenthesis
@@ -138,19 +149,22 @@ class FrenchTextNormalizer:
         for pattern, replacement in self.replacers.items():
             s = re.sub(pattern, replacement, s)
 
-        s = self.standardize_numbers(s)
+        if do_standardize_numbers:
+            s = self.standardize_numbers(s)  # convert number to words
         # s = self.standardize_spellings(s)
 
         # s = self.clean(s, keep="-'")
+        # s = re.sub(rf"[^{self.allowed_chars}\'\- ]", "", s)
         # don't keep dash for hf event
-        s = self.clean(s, keep="'")
-        s = re.sub(rf"[^{self.latin_chars}\'\- ]", "", s)
+        s = self.clean(s, keep=symbols_to_keep)  # remove any other markers, symbols, punctuations with a space
+        # s = re.sub(rf"[^{self.allowed_chars}\' ]", "", s)  # remove unnecessary alphabet characters
+        s = re.sub(rf"[^{self.allowed_chars}{escape_string(symbols_to_keep)}\s]", " ", s)  # remove unnecessary alphabet characters
 
         s = re.sub(r"\s+'", "'", s)  # standardize when there's a space before an apostrophe
         s = re.sub(r"'\s+", "'", s)  # standardize when there's a space after an apostrophe
-        # s = re.sub(rf"([{self.latin_chars}])\s+'", r"\1'", s)  # standardize when there's a space before an apostrophe
-        # s = re.sub(rf"([{self.latin_chars}])'([{self.latin_chars}])", r"\1' \2", s)  # add an espace after an apostrophe
-        # s = re.sub(rf"(?<!aujourd)(?<=[{self.latin_chars}])'(?=[{self.latin_chars}])", "' ", s)  # add an espace after an apostrophe (except)
+        # s = re.sub(rf"([{self.allowed_chars}])\s+'", r"\1'", s)  # standardize when there's a space before an apostrophe
+        # s = re.sub(rf"([{self.allowed_chars}])'([{self.allowed_chars}])", r"\1' \2", s)  # add an espace after an apostrophe
+        # s = re.sub(rf"(?<!aujourd)(?<=[{self.allowed_chars}])'(?=[{self.allowed_chars}])", "' ", s)  # add an espace after an apostrophe (except)
 
         # s = re.sub(r"(?<!\b{})-(?=\S)".format(r")(?<!\b".join(self.numbers_before_dash)), " ", s)  # remove dash not after numbers
         # s = re.sub(r"(?:(?<=\s)|(?<=^))\-+(?=\w)", " ", s)  # remove beginning dash in words
