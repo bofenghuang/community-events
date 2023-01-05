@@ -6,6 +6,7 @@ import torch
 from datasets import Audio, load_dataset
 from transformers import pipeline
 from transformers.models.whisper.english_normalizer import BasicTextNormalizer
+# from transformers.models.whisper.english_normalizer import EnglishTextNormalizer
 
 # from normalize_text_hf_sprint import FrenchTextNormalizer
 
@@ -13,6 +14,7 @@ wer_metric = evaluate.load("wer")
 cer_metric = evaluate.load("cer")
 
 normalizer = BasicTextNormalizer()
+# normalizer = EnglishTextNormalizer()
 # normalizer = FrenchTextNormalizer()
 
 
@@ -54,7 +56,6 @@ def data(dataset):
 def main(args):
     batch_size = args.batch_size
 
-    # todo: mange fp16 inside pipeline
     model_args = {}
     if args.fp16:
         model_args["torch_dtype"] = torch.float16
@@ -69,7 +70,7 @@ def main(args):
     )
 
     # NB: decoding option
-    pipe.model.config.max_length = 225 + 1
+    # pipe.model.config.max_length = 225 + 1
     # sampling
     # pipe.model.config.do_sample = True
     # beam search
@@ -99,7 +100,7 @@ def main(args):
     references = []
 
     # run streamed inference
-    for out in pipe(data(dataset), batch_size=batch_size):
+    for out in pipe(data(dataset), batch_size=batch_size, max_new_tokens=225):
         predictions.append(normalizer(out["text"]))
         references.append(out["target"][0])
 
