@@ -46,7 +46,6 @@ deepspeed run_speech_recognition_seq2seq_streaming.py \
 	--load_best_model_at_end \
     --freeze_feature_encoder="False" \
 	--use_cache="False" \
-    --dropout="0.05" \
     --fp16 \
     --gradient_checkpointing \
     --predict_with_generate \

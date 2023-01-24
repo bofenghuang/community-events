@@ -52,7 +52,7 @@ from transformers.utils import check_min_version, send_example_telemetry
 from transformers.utils.versions import require_version
 
 
-from normalize_text_hf_sprint_de import BasicTextNormalizer as GermanTextNormalizer
+from normalize_german import BasicTextNormalizer as GermanTextNormalizer
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.25.0.dev0")
@@ -634,7 +634,7 @@ def main():
         else:
             kwargs["dataset"] = data_args.dataset_name
         if "common_voice" in data_args.dataset_name:
-            kwargs["language"] = data_args.dataset_config_name[:2]
+            kwargs["language"] = data_args.dataset_config_name.split('-')[0]
         if model_args.model_index_name is not None:
             kwargs["model_name"] = model_args.model_index_name
 

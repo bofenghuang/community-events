@@ -2,15 +2,15 @@
 # Copyright 2022 Bofeng Huang
 
 # export TRANSFORMERS_CACHE=/rd_storage/<user>/.cache/huggingface/transformers/
-# export HF_DATASETS_CACHE="/projects/bhuang/.cache/huggingface/datasets"
+export HF_DATASETS_CACHE="/projects/bhuang/.cache/huggingface/datasets"
 
-export WANDB_PROJECT=hf-whisper-sprint-v2
+export WANDB_PROJECT=hf-whisper-sprint-v2.2
 
 # https://github.com/pytorch/audio/issues/1021#issuecomment-726915239
 export OMP_NUM_THREADS=1
 
 # export CUDA_VISIBLE_DEVICES=1,3
-export CUDA_VISIBLE_DEVICES=0
+export CUDA_VISIBLE_DEVICES=4
 
 # https://pytorch.org/docs/stable/elastic/run.html
 # export HOST_NODE_ADDR="localhost:29000"
@@ -20,7 +20,8 @@ export CUDA_VISIBLE_DEVICES=0
 # torchrun \
 #     --rdzv_endpoint=$HOST_NODE_ADDR \
 # 	--nproc_per_node 2 run_speech_recognition_seq2seq_streaming.py \
-python run_speech_recognition_seq2seq_streaming.py \
+deepspeed run_speech_recognition_seq2seq_streaming.py \
+    --deepspeed="ds_config.json" \
     --dataset_name="mozilla-foundation/common_voice_11_0" \
 	--dataset_config_name="fr" \
     --train_split_name="train+validation" \
@@ -31,14 +32,13 @@ python run_speech_recognition_seq2seq_streaming.py \
 	--language="french" \
 	--task="transcribe" \
     --model_name_or_path="openai/whisper-small" \
-	--output_dir="./outputs/hf_event_fr/whisper-small-ft-lr6e6-bs256-steps4k-adamw_bnb_8bit" \
+	--output_dir="./outputs/french/whisper-small-ft-lr1e5-bs256-steps4k-specaug" \
     --overwrite_output_dir \
     --max_steps="4000" \
-    --per_device_train_batch_size="64" \
-    --per_device_eval_batch_size="64" \
-	--gradient_accumulation_steps="4" \
-    --learning_rate="6.25e-6" \
-    --optim="adamw_bnb_8bit" \
+    --per_device_train_batch_size="128" \
+    --per_device_eval_batch_size="128" \
+	--gradient_accumulation_steps="2" \
+    --learning_rate="1.25e-5" \
     --warmup_steps="200" \
 	--weight_decay "0.01" \
     --logging_steps="25" \
@@ -55,10 +55,11 @@ python run_speech_recognition_seq2seq_streaming.py \
     --fp16 \
     --gradient_checkpointing \
     --predict_with_generate \
-    --generation_max_length="225" \
+    --generation_max_length="40" \
     --generation_num_beams="1" \
     --do_train \
     --do_eval
+
 
 # --push_to_hub
 # todo: --dataloader_num_workers="8" \ got error "Sharding a CyclingMultiSourcesExamplesIterable is not implemented"
